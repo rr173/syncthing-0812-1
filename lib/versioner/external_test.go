@@ -43,6 +43,51 @@ func TestExternalNoCommand(t *testing.T) {
 	}
 }
 
+func TestExternalEmptyCommand(t *testing.T) {
+	file := "testdata/folder path/long filename.txt"
+	prepForRemoval(t, file)
+	defer os.RemoveAll("testdata")
+
+	if _, err := os.Lstat(file); err != nil {
+		t.Fatal("File should exist")
+	}
+
+	// Commands that are empty or consist only of whitespace must return a
+	// clear error rather than panicking, and must not touch the file. This
+	// covers the full set of whitespace that strings.TrimSpace rejects,
+	// including carriage returns that shell splitting leaves intact.
+
+	blanks := []string{"", " ", "\t", "\n", "  \t  \n ", "\r\n\t "}
+	for _, cmd := range blanks {
+		e := external{
+			filesystem: fs.NewFilesystem(fs.FilesystemTypeBasic, "."),
+			command:    cmd,
+		}
+		if err := e.Archive(file); err == nil {
+			t.Errorf("Archive with command %q should have returned an error", cmd)
+		}
+		if _, err := os.Lstat(file); err != nil {
+			t.Fatalf("File should still exist after Archive with command %q", cmd)
+		}
+	}
+
+	// prepareCommand must likewise be safe to call directly with any command
+	// that shell splitting reduces to no arguments (spaces, tabs, newlines,
+	// and a trailing backslash-escaped newline): it must return an error,
+	// not panic on indexing the empty argument slice.
+
+	e := external{
+		filesystem: fs.NewFilesystem(fs.FilesystemTypeFake, "TestExternalEmptyCommand"),
+	}
+	emptySplits := []string{"", " ", "\t", "\n", "  \t  \n ", "\\\n"}
+	for _, cmd := range emptySplits {
+		e.command = cmd
+		if _, err := e.prepareCommand("some file"); err == nil {
+			t.Errorf("prepareCommand with command %q should have returned an error", cmd)
+		}
+	}
+}
+
 func TestExternal(t *testing.T) {
 	cmd := "./_external_test/external.sh %FOLDER_PATH% %FILE_PATH%"
 	if build.IsWindows {

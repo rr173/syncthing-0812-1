@@ -66,7 +66,11 @@ func (v external) Archive(filePath string) error {
 
 	l.Debugln("archiving", filePath)
 
-	if v.command == "" {
+	// Reject the command early, before doing any work, when it is empty or
+	// consists only of whitespace. Such a command yields no program to run and
+	// would otherwise fail later in prepareCommand with a panic when indexing
+	// the empty argument slice.
+	if strings.TrimSpace(v.command) == "" {
 		return errors.New("command is empty, please enter a valid command")
 	}
 
@@ -110,6 +114,12 @@ func (v external) prepareCommand(filePath string) (*exec.Cmd, error) {
 	words, err := shellquote.Split(v.command)
 	if err != nil {
 		return nil, fmt.Errorf("command is invalid: %w", err)
+	}
+	if len(words) == 0 {
+		// A command that splits into no arguments (empty or whitespace-only
+		// after shell splitting) has no program to run. Indexing words[0]
+		// below would panic, so reject it with a clear error instead.
+		return nil, errors.New("command is empty, please enter a valid command")
 	}
 
 	context := map[string]string{
